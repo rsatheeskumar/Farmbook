@@ -1,131 +1,198 @@
-# 🌾 Kisan Saathi - किसान साथी
+# 🌾 Kisan Saathi — किसान साथी · கிசான் சாத்தி
 
-Voice-first AI farm companion for Marathi-speaking farmers.
+> Voice-first AI farm companion for Indian farmers — speaks YOUR language.
 
 ---
 
-## Architecture
+## 🌐 Multilanguage Support
+
+Farmers choose their **state → language** on first launch. Everything — UI, AI responses, audio — is in their native language.
+
+| State | Language | Script | Theme |
+|-------|----------|--------|-------|
+| 🟠 Maharashtra | मराठी (Marathi) | Devanagari | Green |
+| 🔴 Tamil Nadu | தமிழ் (Tamil) | Tamil | Red |
+| 🔵 All India | English | Latin | Blue |
+
+**Adding more languages** = one config block. Punjab (ਪੰਜਾਬੀ), Andhra (తెలుగు), Karnataka (ಕನ್ನಡ) etc. all follow the same pattern.
+
+**How language works end-to-end:**
+```
+Farmer speaks → Whisper detects language automatically
+             → Claude responds in SAME language
+             → TTS speaks back in same language
+             → UI already in farmer's language
+```
+
+---
+
+## 🏗 Architecture
 
 ```
 kisan-saathi/
 ├── backend/
-│   ├── main.py              ← FastAPI app (all endpoints)
-│   ├── scheduler.py         ← Daily advice cron job
+│   ├── main.py              ← FastAPI server + mobile web UI at /test
+│   ├── scheduler.py         ← Daily advice cron job (runs 6 AM daily)
 │   ├── db/
-│   │   ├── database.py      ← SQLAlchemy models + DB connection
-│   │   └── schema.sql       ← Raw SQL schema
+│   │   ├── database.py      ← SQLAlchemy models (SQLite dev / Postgres prod)
+│   │   └── schema.sql       ← Raw SQL schema reference
 │   ├── services/
-│   │   ├── ai_service.py    ← Whisper STT, Claude LLM, TTS, Weather
-│   │   ├── prompts.py       ← All Marathi prompt templates
-│   │   └── storage.py       ← File storage (local or S3)
+│   │   ├── ai_service.py    ← Whisper STT, Claude LLM, TTS, Weather API
+│   │   ├── prompts.py       ← Multilingual prompt templates
+│   │   └── storage.py       ← Audio/image file storage
 │   └── requirements.txt
-└── flutter_app/
-    ├── lib/
-    │   ├── main.dart
-    │   ├── screens/
-    │   │   ├── home_screen.dart        ← Main voice UI
-    │   │   └── onboarding_screen.dart  ← Farm registration
-    │   ├── widgets/
-    │   │   ├── mic_button.dart         ← Large pulsing mic button
-    │   │   ├── daily_advice_card.dart  ← Today's action card
-    │   │   └── response_card.dart      ← AI response display
-    │   └── services/
-    │       ├── api_service.dart        ← HTTP calls to backend
-    │       └── audio_service.dart      ← Record + playback
-    └── pubspec.yaml
+├── flutter_app/
+│   ├── lib/
+│   │   ├── main.dart
+│   │   ├── screens/
+│   │   │   ├── home_screen.dart         ← Main voice UI
+│   │   │   └── onboarding_screen.dart   ← Language + farm registration
+│   │   ├── widgets/
+│   │   │   ├── mic_button.dart          ← Large pulsing mic button
+│   │   │   ├── daily_advice_card.dart   ← Today's action card
+│   │   │   └── response_card.dart       ← AI response + audio playback
+│   │   └── services/
+│   │       ├── api_service.dart         ← All HTTP calls to backend
+│   │       └── audio_service.dart       ← Record + playback
+│   ├── lib/kisan_saathi_multilang.jsx   ← React preview (single language)
+│   ├── lib/kisan_saathi_three_preview.jsx ← React preview (3 languages)
+│   └── pubspec.yaml
+├── .env.example             ← API keys template
+├── .gitignore
+├── HOW_TO_RUN.md            ← Step by step local setup
+└── README.md                ← This file
 ```
 
 ---
 
-## Database Schema
+## 🗄 Database Schema
 
 | Table | Purpose |
 |-------|---------|
-| `users` | Phone + name, language preference |
-| `farms` | Village, soil type, irrigation, area |
-| `farm_memory` | Active crop, stage, last irrigation/fertilizer/pesticide |
-| `conversations` | Full history of voice Q&A |
-| `daily_advice` | Pre-generated daily actions |
+| `users` | Phone, name, **language preference** |
+| `farms` | Village, soil type, irrigation, area, district |
+| `farm_memory` | Active crop, stage, last irrigation/fertilizer/pesticide — **auto-updated from conversations** |
+| `conversations` | Full voice Q&A history per farm |
+| `daily_advice` | Pre-generated daily actions (one per farm per day) |
 | `image_diagnoses` | Crop photo diagnosis results |
 
-**Key design:** `farm_memory` is updated automatically from every conversation by Claude, so the system always knows the current crop stage without the farmer filling any forms.
+**Key design:** `farm_memory` is updated automatically after every conversation by Claude Haiku extraction — the farmer never fills a form again after onboarding.
 
 ---
 
-## Setup — Local Development
+## ⚙️ How Language Selection Works
 
-### 1. Database
-
-```bash
-# PostgreSQL
-psql -U postgres
-CREATE DATABASE kisansaathi;
-\q
-
-# Run schema
-psql -U postgres -d kisansaathi -f backend/db/schema.sql
+### 1. App Launch — State Picker
+```
+Screen 1: Choose State
+  🟠 Maharashtra  → मराठी
+  🔴 Tamil Nadu   → தமிழ்
+  🔵 All India    → English
 ```
 
-### 2. Backend
+### 2. Registration — Everything in chosen language
+Soil types, irrigation options, labels — all rendered in native script.
 
+### 3. Voice Input
+```python
+# Whisper auto-detects language from audio
+transcription = whisper.transcribe(audio, language=user.language)
+# "mr" for Marathi, "ta" for Tamil, "en" for English
+```
+
+### 4. LLM Response
+```python
+# System prompt tells Claude which language to respond in
+system = f"Always respond in {'मराठी' if lang=='mr' else 'தமிழ்' if lang=='ta' else 'English'}"
+```
+
+### 5. TTS Audio
+```python
+# OpenAI TTS speaks back in correct language automatically
+audio = openai.audio.speech.create(input=marathi_text, voice="onyx")
+```
+
+---
+
+## 🚀 Local Setup (Windows / Mac / Linux)
+
+### Step 1 — Clone the repo
 ```bash
-cd backend
+git clone https://github.com/YOUR_USERNAME/kisan-saathi.git
+cd kisan-saathi
+```
+
+### Step 2 — Create virtual environment
+```bash
 python -m venv venv
+
+# Windows:
+venv\Scripts\activate
+
+# Mac/Linux:
 source venv/bin/activate
-pip install -r requirements.txt
+```
 
-# Set environment variables
-cp ../.env.example .env
-# Edit .env with your API keys
+### Step 3 — Install packages
+```bash
+pip install fastapi "uvicorn[standard]" "sqlalchemy[asyncio]" aiosqlite \
+  anthropic openai httpx python-multipart python-dotenv aiofiles pydantic
+```
 
-# Start server
+### Step 4 — Add API keys
+```bash
+cp .env.example .env
+# Open .env and fill in your keys
+```
+
+| Key | Where to get | Cost |
+|-----|-------------|------|
+| `ANTHROPIC_API_KEY` | console.anthropic.com | $5 free credit |
+| `OPENAI_API_KEY` | platform.openai.com | $5 free credit |
+| `OPENWEATHER_API_KEY` | openweathermap.org | Free forever |
+
+### Step 5 — Run the server
+```bash
 uvicorn backend.main:app --reload --port 8000
 ```
 
-**API Keys needed:**
-- `ANTHROPIC_API_KEY` → https://console.anthropic.com
-- `OPENAI_API_KEY` → https://platform.openai.com (for Whisper STT + TTS)
-- `OPENWEATHER_API_KEY` → https://openweathermap.org/api (free tier)
+Open in browser: **http://localhost:8000/test**
 
-### 3. Flutter App
-
+### Step 6 — Test on your phone (ngrok)
 ```bash
-cd flutter_app
+# New terminal:
+ngrok http 8000
 
-# Install dependencies
-flutter pub get
+# Update .env:
+BASE_URL=https://YOUR_NGROK_URL.ngrok-free.app
 
-# Set your server IP in lib/services/api_service.dart:
-# static const String _baseUrl = 'http://YOUR_SERVER_IP:8000';
-
-# Run on device
-flutter run
-```
-
-### 4. Daily Scheduler (Cron)
-
-```bash
-# Run once manually to test
-python -m backend.scheduler
-
-# Add to crontab (6 AM every day)
-crontab -e
-# Add: 0 6 * * * cd /your/project && python -m backend.scheduler
+# Restart server, then open ngrok URL on your phone
 ```
 
 ---
 
-## API Endpoints
+## 📡 API Endpoints
 
-### POST /register-farm
-Register new farmer + farm.
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/test` | Mobile web UI (works on phone via ngrok) |
+| `GET` | `/health` | Server health check |
+| `POST` | `/register-farm` | Register new farmer + language + farm |
+| `POST` | `/voice-input` | Upload audio → get Marathi/Tamil/English advice |
+| `POST` | `/image-diagnosis` | Upload crop photo → get disease diagnosis |
+| `GET` | `/daily-advice/{farm_id}` | Today's pre-generated advice |
+| `GET` | `/farm-memory/{farm_id}` | Current farm profile |
+| `PUT` | `/farm-memory/{farm_id}` | Update farm state manually |
 
+### Register Farm (now includes language)
 ```json
+POST /register-farm
 {
   "phone": "9876543210",
   "name": "रामराव पाटील",
   "village": "साखरवाडी",
   "district": "सोलापूर",
+  "language": "mr",
   "crop_name": "सोयाबीन",
   "sowing_date": "2025-06-15",
   "soil_type": "काळी",
@@ -134,140 +201,101 @@ Register new farmer + farm.
 }
 ```
 
-Response:
-```json
-{"user_id": "uuid", "farm_id": "uuid"}
-```
-
-### POST /voice-input
-Send farmer's voice recording.
-
-Form fields: `farm_id`, `user_id`, `audio` (file)
-
-Response:
-```json
-{
-  "question": "आज खत घालू का?",
-  "advice": "आज खत घालू नका. उद्या पाऊस येईल त्यामुळे खत वाहून जाईल. परवा दुपारी घाला.",
-  "audio_url": "http://server/static/audio/advice_abc123.mp3"
-}
-```
-
-### POST /image-diagnosis
-Send crop photo for disease detection.
-
-Form fields: `farm_id`, `user_id`, `image` (file)
-
-Response:
-```json
-{
-  "diagnosis": "पानांवर करपा रोग आहे. उद्या सकाळी लवकर फवारणी करा.",
-  "audio_url": "http://server/static/audio/diag_xyz789.mp3"
-}
-```
-
-### GET /daily-advice/{farm_id}
-Get today's pre-generated daily advice.
-
-### GET /farm-memory/{farm_id}
-Get current farm profile stored in system.
-
-### PUT /farm-memory/{farm_id}
-Manually update farm state.
-
 ---
 
-## Example Conversation
+## 💬 Example Conversations
 
+### मराठी (Marathi)
 **Farmer:** "आज पाणी द्यायचं का?"
-*(Should I irrigate today?)*
+**Kisan Saathi:** "आज पाणी देऊ नका. उद्या ७०% पाऊस येण्याची शक्यता आहे. पाणी दिल्यास मुळं कुजण्याचा धोका आहे."
 
-**System processes:**
-1. Transcribes via Whisper (Marathi)
-2. Loads farm profile: Soybean, flowering stage, last irrigated 4 days ago
-3. Fetches weather: Rain probability 72% in next 24h
-4. Builds prompt with all context
-5. Claude generates response
+### தமிழ் (Tamil)
+**Farmer:** "இன்று தண்ணீர் பாய்ச்சலாமா?"
+**Kisan Saathi:** "இன்று தண்ணீர் பாய்ச்சாதீர்கள். நாளை 70% மழை வாய்ப்பு உள்ளது. வேர் அழுகும் அபாயம் உள்ளது."
 
-**Response (text + audio):**
-> "आज पाणी देऊ नका. उद्या पाऊस येण्याची 70% शक्यता आहे. आत्ता पाणी दिल्यास मुळं कुजण्याचा धोका आहे."
+### English
+**Farmer:** "Should I water today?"
+**Kisan Saathi:** "Don't irrigate today. 70% chance of rain in 24 hours. Watering now risks root rot in your crop."
 
 ---
 
-**Farmer:** (sends photo of yellowing leaves)
+## 🧠 Prompt Architecture
 
-**Response:**
-> "पानांवर नायट्रोजनची कमतरता दिसते. आठवड्याभरात युरिया खते द्या - एकरी 10 किलो. पाऊस आधी द्यायला जमल्यास चांगले."
-
----
-
-## Prompt Architecture
-
-Every LLM call includes:
-
+Every LLM call includes full context:
 ```
-System prompt contains:
-  ✓ Farmer's full farm profile (village, soil, crop, stage)
+System prompt:
+  ✓ Language instruction (respond in Marathi / Tamil / English)
+  ✓ Farmer's village, soil type, irrigation source
+  ✓ Current crop + stage + sowing date
   ✓ Last irrigation / fertilizer / pesticide dates
   ✓ Today's weather forecast
-  ✓ Last 3 conversations (context)
-  ✓ Behavioral rules (simple language, actionable, 2-3 sentences)
+  ✓ Last 3 conversations (memory)
+  ✓ Rules: 2-3 sentences, actionable, no jargon, no "AI"
 
-User message = farmer's transcribed question
-```
-
-Memory is automatically updated after every conversation using a fast extraction call to `claude-haiku`.
-
----
-
-## Safety Rules
-
-- Never recommends banned pesticides (list enforced via system prompt)
-- If image diagnosis confidence < 60% → asks follow-up question
-- Responses always in Marathi
-- Maximum 3 sentences per response
-- Never mentions "AI" in responses
-- Direct action always given (no hedging)
-
----
-
-## Production Deployment (Single VM)
-
-```bash
-# Ubuntu 22.04, minimum 2 vCPU, 4GB RAM
-
-# Install dependencies
-apt install postgresql python3-pip nginx
-
-# Run with systemd
-# /etc/systemd/system/kisansaathi.service
-[Unit]
-Description=Kisan Saathi API
-
-[Service]
-WorkingDirectory=/opt/kisan-saathi
-ExecStart=uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 2
-Restart=always
-EnvironmentFile=/opt/kisan-saathi/.env
-
-[Install]
-WantedBy=multi-user.target
-
-# Nginx reverse proxy with SSL (recommended)
-# Use certbot for free SSL
+User message = transcribed farmer question
 ```
 
 ---
 
-## Cost Estimate (per 1000 farmers, daily)
+## 🛡 Safety Rules
 
-| Service | Usage | Cost |
-|---------|-------|------|
-| Claude Opus (LLM) | 1000 conversations | ~$3 |
-| Whisper (STT) | 1000 × 30s audio | ~$0.18 |
+- Never recommends banned pesticides
+- Uncertain diagnosis → asks one follow-up question
+- Max 3 sentences per response — no long paragraphs
+- Never mentions "AI" or "technology" in responses
+- Responds like an experienced neighboring farmer, not a scientist
+
+---
+
+## 💰 Cost Estimate (1000 farmers/day)
+
+| Service | Usage | Daily Cost |
+|---------|-------|-----------|
+| Claude Opus (advice) | 1000 calls | ~$3.00 |
+| Whisper STT | 1000 × 30s | ~$0.18 |
 | OpenAI TTS | 1000 responses | ~$0.60 |
-| Weather API | 1000 calls | Free |
-| PostgreSQL | Managed | ~$10/mo |
-| **Total** | | **~$100/mo** |
+| OpenWeather | 1000 calls | Free |
+| **Total** | | **~$3.78/day** |
 
 Roughly **₹1/farmer/day** at scale.
+
+---
+
+## 🗺 Roadmap
+
+- [x] Marathi voice support
+- [x] Tamil voice support
+- [x] English support
+- [x] Crop photo diagnosis
+- [x] Daily advice scheduler
+- [x] Auto farm memory from conversations
+- [ ] Hindi (हिंदी) — next
+- [ ] Telugu (తెలుగు)
+- [ ] Kannada (ಕನ್ನಡ)
+- [ ] WhatsApp integration
+- [ ] SMS fallback (no internet)
+- [ ] Offline mode (cache last advice)
+- [ ] Flutter Android APK
+
+---
+
+## 🏭 Production Deployment (Railway.app — recommended)
+
+```bash
+# Install Railway CLI
+npm install -g @railway/cli
+
+# Login and deploy
+railway login
+railway init
+railway up
+
+# Set environment variables in Railway dashboard
+# DATABASE_URL, ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENWEATHER_API_KEY
+```
+
+Railway gives you: free HTTPS, auto-deploy from GitHub, managed Postgres.
+
+---
+
+Built with ❤️ for Indian farmers · Powered by Claude (Anthropic) + Whisper (OpenAI)
